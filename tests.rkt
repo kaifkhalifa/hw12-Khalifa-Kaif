@@ -15,7 +15,7 @@
    (test-case "Valid expression: bind with addition"
      (check-equal? (expr? '(bind [x 10] (+ x 2))) #t))
    (test-case "Invalid expression: missing brackets"
-     (check-equal? (expr? '(bind x 10 (+ x 2))) #f))
+  (check-equal? (expr? '(bind x 10 (+ x 2))) #f))
 
    ;; Tests for ast?
    (test-case "Valid AST: number"
@@ -60,8 +60,8 @@
      (check-equal? (parse '(bind [x 10] (+ x 2)))
                    (bind 'x (num 10) (call (vari '+) (list (vari 'x) (num 2))))))
    (test-case "Invalid parse: unknown expression"
-     (check-exn exn:fail:syntax:cs450?
-       (λ () (parse '(invalid 42)))))
+  (check-exn exn:fail:syntax:cs450?
+    (λ () (parse '(invalid 42)))))
 
    ;; Tests for env-add
    (test-case "Add new binding to empty environment"
@@ -73,13 +73,15 @@
    (test-case "Run a simple number"
      (check-equal? (run (num 42)) 42))
    (test-case "Run a variable"
-     (check-equal? (run (vari '+)) (lambda args (if (andmap number? args) (apply + args) 'NaN))))
+  (check-equal? ((run (vari '+)) 1 2 3) 6))
    (test-case "Run an addition"
      (check-equal? (run (call (vari '+) (list (num 5) (num 10)))) 15))
    (test-case "Run a bind with a function"
-     (check-equal?
-      (run (bind 'x (num 10) (call (fn-ast '(y) (call (vari '+) (list (vari 'x) (vari 'y)))) (list (num 20)))))
-      30))
+  (check-equal?
+   (run (bind 'x (num 10)
+         (call (fn-ast '(y) (call (vari '+) (list (vari 'x) (vari 'y))))
+               (list (num 20)))))
+   30))
    (test-case "Run an undefined variable"
      (check-equal? (run (vari 'z)) 'UNDEFINED-ERROR))
    (test-case "Run a function call with wrong arity"
