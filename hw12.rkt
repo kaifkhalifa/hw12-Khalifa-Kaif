@@ -4,7 +4,19 @@
 
 (require rackunit)
 
+
 ;; DATA DEFINITIONS
+
+;; A 450LangResult (Result) is one of:
+;; - Number
+;; - 'NaN
+;; - FnResult
+;; - ErrorResult
+(define (result? x)
+  (or (number? x)
+      (eq? x 'NaN)
+      (fn-result? x)
+      (error-result? x)))
 
 ;; A Var is a Symbol.
 ;; Interpretation: Represents a variable in the CS450Lang program.
@@ -27,7 +39,6 @@
 ;; - '(bind [Var Expr] Expr)
 ;; - '(fn List<Var> Expr)
 ;; - (cons Expr List<Expr>)
-;; Interpretation: Represents the syntax of CS450Lang programs.
 (define (expr? x)
   (or (number? x)
       (var? x)
@@ -45,41 +56,36 @@
                (and (pair? x)
                     (expr? (car x))
                     (andmap expr? (cdr x)))))))
+(check-equal? (expr? '(bind [x 10] (+ x 2))) #t)
 
 ;; A 450LangAST (AST) is one of:
 ;; - (num Number)
 ;; - (vari Symbol)
 ;; - (fn-ast List<Symbol> AST)
 ;; - (call AST List<AST>)
-;; Interpretation: Represents the parsed version of CS450Lang programs.
-(struct num [n])
-(struct vari [v])
-(struct fn-ast [params body])
-(struct call [fn args])
-(struct bind [var expr body])
+;; - (bind Symbol AST AST)
+(struct num [n] #:transparent)
+(struct vari [v] #:transparent)
+(struct fn-ast [params body] #:transparent)
+(struct call [fn args] #:transparent)
+(struct bind [var expr body] #:transparent)
+
+;; A FnResult is one of:
+;; - A Racket function
+;; - (fn-result List<Symbol> AST Environment)
+(struct fn-result [params body env] #:transparent)
 
 (define (ast? x)
   (or (num? x)
       (vari? x)
       (fn-ast? x)
-      (call? x)))
+      (call? x)
+      (bind? x)))
+(check-equal? (ast? (num 42)) #t)
 
-;; A 450LangResult (Result) is one of:
-;; - Number
-;; - 'NaN
-;; - FnResult
-;; - ErrorResult
-;; Interpretation: Represents the result of running a CS450Lang program.
-(define (result? x)
-  (or (number? x)
-      (eq? x 'NaN)
-      (fn-result? x)
-      (error-result? x)))
 
-;; A FnResult is one of:
-;; - A Racket function
-;; - (fn-result List<Symbol> AST Environment)
-(struct fn-result [params body env])
+;; exn:fail:syntax:cs450 is a subtype of exn:fail:syntax for CS450 syntax errors.
+(struct exn:fail:syntax:cs450 exn:fail:syntax ())
 
 ;; An ErrorResult is one of:
 ;; - 'UNDEFINED-ERROR
@@ -89,31 +95,34 @@
   (or (eq? x 'UNDEFINED-ERROR)
       (eq? x 'NOT-FN-ERROR)
       (eq? x 'ARITY-ERROR)))
+(check-equal? (error-result? 'NOT-FN-ERROR) #t)
 
-;; FUNCTIONS
-
-;; exn:fail:syntax:cs450 is a subtype of exn:fail:syntax for CS450 syntax errors.
-(struct exn:fail:syntax:cs450 exn:fail:syntax ())
 
 ;; NaN? : Any -> Boolean
 ;; Returns true if given a NaN Result.
 (define (NaN? x)
   (eq? x 'NaN))
+(check-equal? (NaN? 'NaN) #t)
+
 
 ;; UNDEFINED-ERROR? : Any -> Boolean
-;; Returns true if given an UNDEFINED-ERROR Result.
+;; Returns true if given a UNDEFINED-ERROR Result.
 (define (UNDEFINED-ERROR? x)
   (eq? x 'UNDEFINED-ERROR))
+(check-equal? (UNDEFINED-ERROR? 'UNDEFINED-ERROR) #t)
 
 ;; NOT-FN-ERROR? : Any -> Boolean
 ;; Returns true if given a NOT-FN-ERROR Result.
 (define (NOT-FN-ERROR? x)
   (eq? x 'NOT-FN-ERROR))
+(check-equal? (NOT-FN-ERROR? 'NOT-FN-ERROR) #t)
 
 ;; ARITY-ERROR? : Any -> Boolean
-;; Returns true if given an ARITY-ERROR Result.
+;; Returns true if given a ARITY-ERROR Result.
 (define (ARITY-ERROR? x)
   (eq? x 'ARITY-ERROR))
+(check-equal? (ARITY-ERROR? 'ARITY-ERROR) #t)
+
 
 ;; parse: Expr -> AST
 ;; Converts a 450LangExpr into a 450LangAST.
@@ -133,12 +142,13 @@
     [(and (pair? expr) (expr? (car expr)) (andmap expr? (cdr expr)))
      (call (parse (car expr)) (map parse (cdr expr)))]
     [else (raise (exn:fail:syntax:cs450 "Invalid CS450LangExpr" (current-continuation-marks)))]))
+(check-equal? (parse 42) (num 42))
 
 ;; env-add: Env Var Result -> Env
 ;; Adds a new binding to the environment.
 (define (env-add env var result)
   (cons (list var result) env))
-
+(check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
 ;; run: AST -> Result
 ;; Evaluates a 450LangAST tree to produce a 450LangResult.
@@ -155,14 +165,15 @@
            'ARITY-ERROR)]
       [_ 'NOT-FN-ERROR]))
   (define (run/env ast env)
-  (match ast
-    [(num n) n]
-    [(vari v)
-     (let ([binding (assoc v env)])
-       (if binding
-           (second binding) ;; Extract the result (second element of the list)
-           'UNDEFINED-ERROR))]
-    [(fn-ast params body) (fn-result params body env)]
-    [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
-    [_ 'UNDEFINED-ERROR]))
+    (match ast
+      [(num n) n]
+      [(vari v)
+       (let ([binding (assoc v env)])
+         (if binding
+             (second binding) 
+             'UNDEFINED-ERROR))]
+      [(fn-ast params body) (fn-result params body env)]
+      [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
+      [_ 'UNDEFINED-ERROR]))
   (run/env ast INIT-ENV))
+(check-equal? (run (num 42)) 42)
