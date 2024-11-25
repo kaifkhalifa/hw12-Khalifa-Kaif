@@ -4,9 +4,7 @@
 
 (require rackunit)
 
-;; ============================
 ;; DATA DEFINITIONS
-;; ============================
 
 ;; A Var is a Symbol.
 ;; Interpretation: Represents a variable in the CS450Lang program.
@@ -58,6 +56,7 @@
 (struct vari [v])
 (struct fn-ast [params body])
 (struct call [fn args])
+(struct bind [var expr body])
 
 (define (ast? x)
   (or (num? x)
@@ -82,14 +81,6 @@
 ;; - (fn-result List<Symbol> AST Environment)
 (struct fn-result [params body env])
 
-(define (fn-result? x)
-  (or (procedure? x)
-      (and (struct? x 'fn-result)
-           (list? (fn-result-params x))
-           (andmap symbol? (fn-result-params x))
-           (ast? (fn-result-body x))
-           (env? (fn-result-env x)))))
-
 ;; An ErrorResult is one of:
 ;; - 'UNDEFINED-ERROR
 ;; - 'NOT-FN-ERROR
@@ -99,18 +90,10 @@
       (eq? x 'NOT-FN-ERROR)
       (eq? x 'ARITY-ERROR)))
 
-;; ============================
 ;; FUNCTIONS
-;; ============================
 
 ;; exn:fail:syntax:cs450 is a subtype of exn:fail:syntax for CS450 syntax errors.
 (struct exn:fail:syntax:cs450 exn:fail:syntax ())
-
-;; exn:fail:syntax:cs450? : Any -> Boolean
-;; Returns true if given an exn:fail:syntax:cs450 exception.
-(define (exn:fail:syntax:cs450? x)
-  (and (exn:fail:syntax? x)
-       (struct? x 'exn:fail:syntax:cs450)))
 
 ;; NaN? : Any -> Boolean
 ;; Returns true if given a NaN Result.
@@ -151,6 +134,12 @@
      (call (parse (car expr)) (map parse (cdr expr)))]
     [else (raise (exn:fail:syntax:cs450 "Invalid CS450LangExpr" (current-continuation-marks)))]))
 
+;; env-add: Env Var Result -> Env
+;; Adds a new binding to the environment.
+(define (env-add env var result)
+  (cons (list var result) env))
+
+
 ;; run: AST -> Result
 ;; Evaluates a 450LangAST tree to produce a 450LangResult.
 (define (run ast)
@@ -166,10 +155,14 @@
            'ARITY-ERROR)]
       [_ 'NOT-FN-ERROR]))
   (define (run/env ast env)
-    (match ast
-      [(num n) n]
-      [(vari v) (match (assoc v env) [#f 'UNDEFINED-ERROR] [(_ . result) result])]
-      [(fn-ast params body) (fn-result params body env)]
-      [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
-      [_ 'UNDEFINED-ERROR]))
+  (match ast
+    [(num n) n]
+    [(vari v)
+     (let ([binding (assoc v env)])
+       (if binding
+           (second binding) ;; Extract the result (second element of the list)
+           'UNDEFINED-ERROR))]
+    [(fn-ast params body) (fn-result params body env)]
+    [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
+    [_ 'UNDEFINED-ERROR]))
   (run/env ast INIT-ENV))
