@@ -1,10 +1,8 @@
 #lang racket
 
-;; tests.rkt
-;; Test suite for hw12.rkt using rackunit.
 
 (require rackunit)
-(require "hw12.rkt") ; Make sure this points to your implementation file.
+(require "hw12.rkt")
 
 ;; Define test suite
 (define TESTS
