@@ -145,13 +145,18 @@
     [(and (pair? expr) (expr? (car expr)) (andmap expr? (cdr expr)))
      (call (parse (car expr)) (map parse (cdr expr)))]
     [else (raise (exn:fail:syntax:cs450 "Invalid CS450LangExpr"))]))
+(check-equal?
+ (parse '(bind [x 10] (+ x 2)))
+ (bind 'x (num 10) (call (vari '+) (list (vari 'x) (num 2)))))
 
 ;; env-add: Env Var Result -> Env
 ;; Adds a new binding to the environment.
 (define (env-add env var result)
-  (if (list? env)
-      (cons (list var result) env)
-      (raise (error "env-add: Invalid environment (not a list)"))))
+  (cond
+    [(not (list? env)) ; If env is not a list, raise an error
+     (error "env-add: Invalid environment (not a list): " env)]
+    [else
+     (cons (list var result) env)]))
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
 ;; init-env: -> Environment
@@ -171,7 +176,9 @@
     [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
     [(fn-result params body env)
      (if (= (length params) (length args))
-         (run/env body (foldl env-add env params args))
+         (run/env body (foldl (lambda (env param arg)
+                                (env-add env param arg))
+                              env params args))
          'ARITY-ERROR)]
     [_ 'NOT-FN-ERROR]))
 (check-equal? (450apply (lambda args (apply + args)) (list 1 2 3)) 6)
@@ -186,10 +193,11 @@
                 (if binding (second binding) 'UNDEFINED-ERROR))]
     [(fn-ast params body) (fn-result params body env)]
     [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
-    [(bind var expr body) (let ([val (run/env expr env)])
-                            (if (result? val)
-                                (run/env body (env-add env var val))
-                                'UNDEFINED-ERROR))]
+    [(bind var expr body)
+ (let ([val (run/env expr env)])
+   (if (result? val)
+       (run/env body (env-add env var val))
+       'UNDEFINED-ERROR))]
     [_ 'UNDEFINED-ERROR]))
 (check-equal? (run/env (num 42) '()) 42)
 
