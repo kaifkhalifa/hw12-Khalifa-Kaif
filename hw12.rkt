@@ -1,4 +1,3 @@
-
 #lang racket
 
 (provide (all-defined-out)) 
@@ -153,9 +152,7 @@
 (define (env-add env var result)
   (if (list? env)
       (cons (list var result) env)
-      (begin
-        (printf "Error: Invalid environment passed to env-add: ~a\n" env)
-        (raise (error "env-add: Invalid environment (not a list)")))))
+      (raise (error "env-add: Invalid environment (not a list)"))))
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
 ;; init-env: -> Environment
@@ -190,15 +187,10 @@
                 (if binding (second binding) 'UNDEFINED-ERROR))]
     [(fn-ast params body) (fn-result params body env)]
     [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
-    [(bind var expr body)
- (let ([val (run/env expr env)])
-   (if (result? val)            
-       (let ([new-env (env-add env var val)]) 
-         (if (env? new-env)      
-             (run/env body new-env) 
-             (raise (error "run/env: env-add returned an invalid environment"))))
-       'UNDEFINED-ERROR))]       
-
+    [(bind var expr body) (let ([val (run/env expr env)])
+                            (if (result? val)
+                                (run/env body (env-add env var val))
+                                'UNDEFINED-ERROR))]
     [_ 'UNDEFINED-ERROR]))
 (check-equal? (run/env (num 42) '()) 42)
 
@@ -208,5 +200,3 @@
 (define (run ast)
   (run/env ast (init-env)))
 (check-equal? (run (num 42)) 42)
-
-
