@@ -1,3 +1,4 @@
+
 #lang racket
 
 (provide (all-defined-out)) 
@@ -131,50 +132,30 @@
 ;; Raises exn:fail:syntax:cs450 if the input is not a valid Expr.
 (define (parse expr)
   (cond
-    ;; Case 1: Numbers
     [(number? expr) (num expr)]
-    
-    ;; Case 2: Variables
     [(symbol? expr) (vari expr)]
-    
-    ;; Case 3: Bind expressions
-    [(and (list? expr)
-          (eq? (first expr) 'bind)
-          (= (length expr) 3) ;; Ensure there are exactly three elements
-          (list? (second expr)) ;; Ensure second element is a list
-          (= (length (second expr)) 2) ;; Ensure it has two elements
-          (var? (first (second expr))) ;; Ensure first element is a variable
-          (expr? (second (second expr))) ;; Ensure second element is a valid expr
-          (expr? (third expr))) ;; Ensure third element is a valid expr
+    [(and (list? expr) (eq? (first expr) 'bind) (= (length expr) 3)
+          (list? (second expr)) (= (length (second expr)) 2)
+          (symbol? (first (second expr))) (expr? (second (second expr)))
+          (expr? (third expr)))
      (bind (first (second expr))
            (parse (second (second expr)))
            (parse (third expr)))]
-
-    ;; Case 4: Function expressions
-    [(and (list? expr)
-          (eq? (first expr) 'fn)
-          (list? (second expr)) ;; Ensure second element is a list
-          (andmap var? (second expr))) ;; All elements in the list are variables
-     (if (< (length expr) 3) ;; Ensure a body exists
-         (raise (exn:fail:syntax:cs450 "Invalid function syntax: Missing body"))
-         (fn-ast (second expr) (parse (third expr))))]
-
-    ;; Case 5: Function calls
-    [(and (pair? expr)
-          (expr? (car expr)) ;; Function must be a valid expression
-          (andmap expr? (cdr expr))) ;; All arguments must be valid expressions
+    [(and (list? expr) (eq? (first expr) 'fn) (list? (second expr))
+          (andmap symbol? (second expr)) (expr? (third expr)))
+     (fn-ast (second expr) (parse (third expr)))]
+    [(and (pair? expr) (expr? (car expr)) (andmap expr? (cdr expr)))
      (call (parse (car expr)) (map parse (cdr expr)))]
-
-    ;; Case 6: Invalid expressions
     [else (raise (exn:fail:syntax:cs450 "Invalid CS450LangExpr"))]))
-
 
 ;; env-add: Env Var Result -> Env
 ;; Adds a new binding to the environment.
 (define (env-add env var result)
   (if (list? env)
       (cons (list var result) env)
-      (raise (error "env-add: Invalid environment (not a list)"))))
+      (begin
+        (printf "Error: Invalid environment passed to env-add: ~a\n" env)
+        (raise (error "env-add: Invalid environment (not a list)")))))
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
 ;; init-env: -> Environment
@@ -204,34 +185,21 @@
 ;; Produces the result of evaluation or an error result for invalid operations.
 (define (run/env ast env)
   (match ast
-    ;; Case 1: Number literals
     [(num n) n]
-    
-    ;; Case 2: Variables
-    [(vari v)
-     (let ([binding (assoc v env)]) ;; Find the variable in the environment
-       (if binding
-           (second binding) ;; Return its value if found
-           'UNDEFINED-ERROR))] ;; Otherwise, return an error
-    
-    ;; Case 3: Function definitions
-    [(fn-ast params body)
-     (fn-result params body env)] ;; Attach the current environment to the function
-    
-    ;; Case 4: Function calls
-    [(call fn args)
-     (450apply (run/env fn env) (map (curryr run/env env) args))] ;; Evaluate function and arguments
-    
-    ;; Case 5: Bind expressions
+    [(vari v) (let ([binding (assoc v env)])
+                (if binding (second binding) 'UNDEFINED-ERROR))]
+    [(fn-ast params body) (fn-result params body env)]
+    [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
     [(bind var expr body)
-     (let ([val (run/env expr env)]) ;; Evaluate the expression
-       (if (result? val) ;; Ensure it evaluates to a valid result
-           (run/env body (env-add env var val)) ;; Add to environment and continue
-           'UNDEFINED-ERROR))] ;; Return an error if `expr` is invalid
-    
-    ;; Case 6: Invalid AST
-    [_ 'UNDEFINED-ERROR]))
+ (let ([val (run/env expr env)])
+   (if (result? val)            
+       (let ([new-env (env-add env var val)]) 
+         (if (env? new-env)      
+             (run/env body new-env) 
+             (raise (error "run/env: env-add returned an invalid environment"))))
+       'UNDEFINED-ERROR))]       
 
+    [_ 'UNDEFINED-ERROR]))
 (check-equal? (run/env (num 42) '()) 42)
 
 ;; run: AST -> Result
