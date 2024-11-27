@@ -163,9 +163,12 @@
 ;; Initializes the environment with predefined bindings for `+` and `-`.
 ;; Produces a list of initial variable bindings.
 (define (init-env)
-  (list
-   (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
-   (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN)))))
+  (let ([env (list
+              (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
+              (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN))))])
+    (if (list? env)
+        env
+        (error "init-env: Generated environment is not a list"))))
 (check-equal? (map first (init-env)) '(+ -))
 
 ;; 450apply: Result (Listof Result) -> Result
@@ -175,11 +178,24 @@
   (match fn
     [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
     [(fn-result params body env)
-     (if (= (length params) (length args))
-         (run/env body (foldl (lambda (env param arg)
-                                (env-add env param arg))
-                              env params args))
-         'ARITY-ERROR)]
+     (cond
+       [(not (list? env)) ; Validate environment
+        (error "450apply: Invalid environment passed to fn-result: " env)]
+       [(= (length args) (length params))
+        (run/env body (foldl (lambda (env param arg)
+                               (if (list? env)
+                                   (env-add env param arg)
+                                   (error "450apply: Environment is not a list during parameter binding" env)))
+                             env params args))]
+       [(< (length args) (length params)) ; Partial application (currying)
+        (fn-result (drop params (length args)) ; Remaining params
+                   body
+                   (foldl (lambda (env param arg)
+                            (if (list? env)
+                                (env-add env param arg)
+                                (error "450apply: Environment is not a list during currying" env)))
+                          env params args))]
+       [else 'ARITY-ERROR])]
     [_ 'NOT-FN-ERROR]))
 (check-equal? (450apply (lambda args (apply + args)) (list 1 2 3)) 6)
 
@@ -196,7 +212,9 @@
     [(bind var expr body)
  (let ([val (run/env expr env)])
    (if (result? val)
-       (run/env body (env-add env var val))
+       (if (list? env)
+           (run/env body (env-add env var val))
+           (error "run/env: Environment is not a list during bind" env))
        'UNDEFINED-ERROR))]
     [_ 'UNDEFINED-ERROR]))
 (check-equal? (run/env (num 42) '()) 42)
