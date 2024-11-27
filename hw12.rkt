@@ -86,7 +86,7 @@
 
 
 ;; exn:fail:syntax:cs450 is a subtype of exn:fail:syntax for CS450 syntax errors.
-(struct exn:fail:syntax:cs450 exn:fail:syntax ())
+(struct exn:fail:syntax:cs450 exn:fail:syntax (message))
 
 ;; An ErrorResult is one of:
 ;; - 'UNDEFINED-ERROR
@@ -124,6 +124,7 @@
   (eq? x 'ARITY-ERROR))
 (check-equal? (ARITY-ERROR? 'ARITY-ERROR) #t)
 
+;; FUNCTIONS
 
 ;; parse: Expr -> AST
 ;; Converts a 450LangExpr into a 450LangAST.
@@ -145,30 +146,22 @@
     [(and (pair? expr) (expr? (car expr)) (andmap expr? (cdr expr)))
      (call (parse (car expr)) (map parse (cdr expr)))]
     [else (raise (exn:fail:syntax:cs450 "Invalid CS450LangExpr"))]))
-(check-equal?
- (parse '(bind [x 10] (+ x 2)))
- (bind 'x (num 10) (call (vari '+) (list (vari 'x) (num 2)))))
 
 ;; env-add: Env Var Result -> Env
 ;; Adds a new binding to the environment.
 (define (env-add env var result)
-  (cond
-    [(not (list? env)) ; If env is not a list, raise an error
-     (error "env-add: Invalid environment (not a list): " env)]
-    [else
-     (cons (list var result) env)]))
+  (if (list? env)
+      (cons (list var result) env)
+      (raise (error "env-add: Invalid environment (not a list)"))))
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
 ;; init-env: -> Environment
 ;; Initializes the environment with predefined bindings for `+` and `-`.
 ;; Produces a list of initial variable bindings.
 (define (init-env)
-  (let ([env (list
-              (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
-              (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN))))])
-    (if (list? env)
-        env
-        (error "init-env: Generated environment is not a list"))))
+  (list
+   (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
+   (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN)))))
 (check-equal? (map first (init-env)) '(+ -))
 
 ;; 450apply: Result (Listof Result) -> Result
@@ -178,24 +171,9 @@
   (match fn
     [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
     [(fn-result params body env)
-     (cond
-       [(not (list? env)) ; Validate environment
-        (error "450apply: Invalid environment passed to fn-result: " env)]
-       [(= (length args) (length params))
-        (run/env body (foldl (lambda (env param arg)
-                               (if (list? env)
-                                   (env-add env param arg)
-                                   (error "450apply: Environment is not a list during parameter binding" env)))
-                             env params args))]
-       [(< (length args) (length params)) ; Partial application (currying)
-        (fn-result (drop params (length args)) ; Remaining params
-                   body
-                   (foldl (lambda (env param arg)
-                            (if (list? env)
-                                (env-add env param arg)
-                                (error "450apply: Environment is not a list during currying" env)))
-                          env params args))]
-       [else 'ARITY-ERROR])]
+     (if (= (length params) (length args))
+         (run/env body (foldl env-add env params args))
+         'ARITY-ERROR)]
     [_ 'NOT-FN-ERROR]))
 (check-equal? (450apply (lambda args (apply + args)) (list 1 2 3)) 6)
 
@@ -209,13 +187,10 @@
                 (if binding (second binding) 'UNDEFINED-ERROR))]
     [(fn-ast params body) (fn-result params body env)]
     [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
-    [(bind var expr body)
- (let ([val (run/env expr env)])
-   (if (result? val)
-       (if (list? env)
-           (run/env body (env-add env var val))
-           (error "run/env: Environment is not a list during bind" env))
-       'UNDEFINED-ERROR))]
+    [(bind var expr body) (let ([val (run/env expr env)])
+                            (if (result? val)
+                                (run/env body (env-add env var val))
+                                'UNDEFINED-ERROR))]
     [_ 'UNDEFINED-ERROR]))
 (check-equal? (run/env (num 42) '()) 42)
 
@@ -225,4 +200,5 @@
 (define (run ast)
   (run/env ast (init-env)))
 (check-equal? (run (num 42)) 42)
+
 
