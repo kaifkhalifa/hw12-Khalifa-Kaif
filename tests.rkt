@@ -12,7 +12,7 @@
    ;; Tests for expr?
    (test-case "Valid expression: bind with addition"
      (check-equal? (expr? '(bind [x 10] (+ x 2))) #t))
-   (test-case "Invalid expression: missing brackets"
+   (test-case "Invalid bind expression with missing brackets"
   (check-equal? (expr? '(bind x 10 (+ x 2))) #f))
 
    ;; Tests for ast?
@@ -57,7 +57,7 @@
    (test-case "Parse valid bind expression"
      (check-equal? (parse '(bind [x 10] (+ x 2)))
                    (bind 'x (num 10) (call (vari '+) (list (vari 'x) (num 2))))))
-   (test-case "Invalid parse: unknown expression"
+   (test-case "Parse invalid unknown expression"
   (check-exn exn:fail:syntax:cs450?
     (λ () (parse '(invalid 42)))))
 
@@ -75,11 +75,10 @@
    (test-case "Run an addition"
      (check-equal? (run (call (vari '+) (list (num 5) (num 10)))) 15))
    (test-case "Run a bind with a function"
-  (check-equal?
-   (run (bind 'x (num 10)
-         (call (fn-ast '(y) (call (vari '+) (list (vari 'x) (vari 'y))))
-               (list (num 20)))))
-   30))
+  (check-equal? (run (bind 'x (num 10)
+                      (call (fn-ast '(y)
+                                    (call (vari '+) (list (vari 'x) (vari 'y))))
+                            (list (num 20))))) 30))
    (test-case "Run an undefined variable"
      (check-equal? (run (vari 'z)) 'UNDEFINED-ERROR))
    (test-case "Run a function call with wrong arity"

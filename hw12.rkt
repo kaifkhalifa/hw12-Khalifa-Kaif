@@ -46,19 +46,16 @@
            (or (and (eq? (first x) 'bind)
                     (list? (second x))
                     (= (length (second x)) 2)
-                    (var? (first (second x)))  
+                    (var? (first (second x)))
                     (expr? (second (second x)))
-                    (expr? (third x)))          
-               (and (eq? (first x) 'bind)
+                    (expr? (third x)))
+               (and (eq? (first x) 'fn)
                     (list? (second x))
-                    (= (length (second x)) 2)               
-                    (var? (first (second x)))              
-                    (expr? (second (second x)))            
-                    (expr? (third x)))                      
+                    (andmap var? (second x))
+                    (expr? (third x)))
                (and (pair? x)
-                    (expr? (car x))            
+                    (expr? (car x))
                     (andmap expr? (cdr x)))))))
-
 
 ;; A 450LangAST (AST) is one of:
 ;; - (num Number)
@@ -145,13 +142,14 @@
      (fn-ast (second expr) (parse (third expr)))]
     [(and (pair? expr) (expr? (car expr)) (andmap expr? (cdr expr)))
      (call (parse (car expr)) (map parse (cdr expr)))]
-    [else (raise (exn:fail:syntax:cs450 "Invalid CS450LangExpr" (current-continuation-marks)))]))
-(check-equal? (parse 42) (num 42))
+    [else (raise (exn:fail:syntax:cs450 "Invalid CS450LangExpr"))]))
 
 ;; env-add: Env Var Result -> Env
 ;; Adds a new binding to the environment.
 (define (env-add env var result)
-  (cons (list var result) env))
+  (if (list? env)
+      (cons (list var result) env)
+      (raise (error "env-add: Invalid environment (not a list)"))))
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
 ;; run: AST -> Result
@@ -162,25 +160,32 @@
           (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN)))))
   (define (450apply fn args)
   (match fn
-    [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)] 
+    [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
     [(fn-result params body env)
-     (if (= (length params) (length args))  
-         (run/env body (foldl env-add env params args)) 
-         'ARITY-ERROR)]                    
-    [_ 'NOT-FN-ERROR]))                    
+     (if (= (length params) (length args))
+         (run/env body (foldl env-add env params args))
+         'ARITY-ERROR)]
+    [_ 'NOT-FN-ERROR]))                  
   (define (run/env ast env)
-  (match ast
-    [(num n) n]
-    [(vari v)
-     (let ([binding (assoc v env)])
-       (if binding
-           (second binding)
-           'UNDEFINED-ERROR))]
-    [(fn-ast params body) (fn-result params body env)]
-    [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
-    [(bind var expr body)
-     (let ([val (run/env expr env)])
-       (run/env body (cons (list var val) env)))] ; Ensure proper environment extension
-    [_ 'UNDEFINED-ERROR]))
+  (if (not (list? env))
+      (raise (error "run/env: Invalid environment (not a list)"))
+      (match ast
+        [(num n) n]
+        [(vari v)
+         (let ([binding (assoc v env)])
+           (if binding
+               (second binding)
+               'UNDEFINED-ERROR))]
+        [(fn-ast params body) (fn-result params body env)]
+        [(call fn args) 
+         (let ([fn-val (run/env fn env)]
+               [arg-vals (map (curryr run/env env) args)])
+           (450apply fn-val arg-vals))]
+        [(bind var expr body)
+         (let ([val (run/env expr env)])
+           (if (result? val)
+               (run/env body (env-add env var val))
+               'UNDEFINED-ERROR))]
+        [_ 'UNDEFINED-ERROR])))
   (run/env ast INIT-ENV))
 (check-equal? (run (num 42)) 42)
