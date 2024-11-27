@@ -44,11 +44,11 @@
       (var? x)
       (and (list? x)
            (or (and (eq? (first x) 'bind)
-                    (list? (second x))
-                    (= (length (second x)) 2)
-                    (var? (first (second x)))
-                    (expr? (second (second x)))
-                    (expr? (third x)))
+                    (list? (second x))                     
+                    (= (length (second x)) 2)             
+                    (var? (first (second x)))              
+                    (expr? (second (second x)))            
+                    (expr? (third x)))                     
                (and (eq? (first x) 'fn)
                     (list? (second x))
                     (andmap var? (second x))
@@ -56,6 +56,8 @@
                (and (pair? x)
                     (expr? (car x))
                     (andmap expr? (cdr x)))))))
+(check-equal? (expr? '(bind [x 10] (+ x 2))) #t)
+
 
 ;; A 450LangAST (AST) is one of:
 ;; - (num Number)
@@ -152,40 +154,49 @@
       (raise (error "env-add: Invalid environment (not a list)"))))
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
-;; run: AST -> Result
-;; Evaluates a 450LangAST tree to produce a 450LangResult.
-(define (run ast)
-  (define INIT-ENV
-    (list (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
-          (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN)))))
-  (define (450apply fn args)
+;; init-env: -> Environment
+;; Initializes the environment with predefined bindings for `+` and `-`.
+;; Produces a list of initial variable bindings.
+(define (init-env)
+  (list
+   (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
+   (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN)))))
+(check-equal? (map first (init-env)) '(+ -))
+
+;; 450apply: Result (Listof Result) -> Result
+;; Applies a function `fn` to the arguments `args` in the given environment.
+;; Produces the result of the function application or an error result if the application is invalid.
+(define (450apply fn args)
   (match fn
     [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
     [(fn-result params body env)
      (if (= (length params) (length args))
          (run/env body (foldl env-add env params args))
          'ARITY-ERROR)]
-    [_ 'NOT-FN-ERROR]))                  
-  (define (run/env ast env)
-  (if (not (list? env))
-      (raise (error "run/env: Invalid environment (not a list)"))
-      (match ast
-        [(num n) n]
-        [(vari v)
-         (let ([binding (assoc v env)])
-           (if binding
-               (second binding)
-               'UNDEFINED-ERROR))]
-        [(fn-ast params body) (fn-result params body env)]
-        [(call fn args) 
-         (let ([fn-val (run/env fn env)]
-               [arg-vals (map (curryr run/env env) args)])
-           (450apply fn-val arg-vals))]
-        [(bind var expr body)
-         (let ([val (run/env expr env)])
-           (if (result? val)
-               (run/env body (env-add env var val))
-               'UNDEFINED-ERROR))]
-        [_ 'UNDEFINED-ERROR])))
-  (run/env ast INIT-ENV))
+    [_ 'NOT-FN-ERROR]))
+(check-equal? (450apply (lambda args (apply + args)) (list 1 2 3)) 6)
+
+;; run/env: AST Environment -> Result
+;; Evaluates a `450LangAST` tree within a given environment `env`.
+;; Produces the result of evaluation or an error result for invalid operations.
+(define (run/env ast env)
+  (match ast
+    [(num n) n]
+    [(vari v) (let ([binding (assoc v env)])
+                (if binding (second binding) 'UNDEFINED-ERROR))]
+    [(fn-ast params body) (fn-result params body env)]
+    [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
+    [(bind var expr body) (let ([val (run/env expr env)])
+                            (if (result? val)
+                                (run/env body (env-add env var val))
+                                'UNDEFINED-ERROR))]
+    [_ 'UNDEFINED-ERROR]))
+(check-equal? (run/env (num 42) '()) 42)
+
+;; run: AST -> Result
+;; Evaluates a `450LangAST` tree in the initial environment.
+;; Produces the result of evaluation or an error result for invalid operations.
+(define (run ast)
+  (run/env ast (init-env)))
 (check-equal? (run (num 42)) 42)
+
