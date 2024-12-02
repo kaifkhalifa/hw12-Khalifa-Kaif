@@ -180,22 +180,23 @@
 (define/contract (450+ . args)
   (-> result? ... result?)
   (cond
-    [(empty? args) 0] 
-    [(andmap number? args) (apply + args)] 
-    [else NaN?]))
+    [(empty? args) 0]
+    [(andmap number? args) (apply + args)]
+    [else 'NaN]))
 ;; example
-(check-equal? (450+ 5 3) 8)
+(check-equal? (450+ 2 4 6) 12)
 
 ;; 450-: Result Result -> Result
-;; “subtracts” 2nd cs450Lang Result from 1st one
+;; “subtracts” CS450Lang Result values
 (define/contract (450- . args)
   (-> result? ... result?)
   (cond
-    [(empty? args) 0] 
-    [(andmap number? args) (apply - args)] 
-    [else NaN?]))
+    [(empty? args) 0]
+    [(andmap number? args) (apply - args)]
+    [else 'NaN]))
 ;; examples
-(check-equal? (450- 5 3) 2)
+(check-equal? (450- 10 4 1) 5) 
+
 
 ;; lookup: Var Environment -> Result
 ;; Retrieves the value bound to `var` in the `env`.
@@ -204,7 +205,6 @@
     [(empty? env) 'UNDEFINED-ERROR]
     [(eq? var (first (first env))) (second (first env))]
     [else (lookup var (rest env))]))
-
 
 ;; run: AST -> Result
 ;; Evaluates a `450LangAST` tree in the initial environment.
