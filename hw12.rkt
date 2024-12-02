@@ -56,6 +56,7 @@
                (and (pair? x)
                     (expr? (car x))
                     (andmap expr? (cdr x)))))))
+;; example
 (check-equal? (expr? '(bind [x 10] (+ x 2))) #t)
 
 
@@ -82,6 +83,7 @@
       (fn-ast? x)
       (call? x)
       (bind? x)))
+;; example
 (check-equal? (ast? (num 42)) #t)
 
 
@@ -96,6 +98,7 @@
   (or (eq? x 'UNDEFINED-ERROR)
       (eq? x 'NOT-FN-ERROR)
       (eq? x 'ARITY-ERROR)))
+;; example
 (check-equal? (error-result? 'NOT-FN-ERROR) #t)
 
 
@@ -103,6 +106,7 @@
 ;; Returns true if given a NaN Result.
 (define (NaN? x)
   (eq? x 'NaN))
+;; example
 (check-equal? (NaN? 'NaN) #t)
 
 
@@ -110,18 +114,21 @@
 ;; Returns true if given a UNDEFINED-ERROR Result.
 (define (UNDEFINED-ERROR? x)
   (eq? x 'UNDEFINED-ERROR))
+;; example
 (check-equal? (UNDEFINED-ERROR? 'UNDEFINED-ERROR) #t)
 
 ;; NOT-FN-ERROR? : Any -> Boolean
 ;; Returns true if given a NOT-FN-ERROR Result.
 (define (NOT-FN-ERROR? x)
   (eq? x 'NOT-FN-ERROR))
+;; example
 (check-equal? (NOT-FN-ERROR? 'NOT-FN-ERROR) #t)
 
 ;; ARITY-ERROR? : Any -> Boolean
 ;; Returns true if given a ARITY-ERROR Result.
 (define (ARITY-ERROR? x)
   (eq? x 'ARITY-ERROR))
+;; example
 (check-equal? (ARITY-ERROR? 'ARITY-ERROR) #t)
 
 ;; FUNCTIONS
@@ -146,13 +153,20 @@
     [(and (pair? expr) (expr? (car expr)) (andmap expr? (cdr expr)))
      (call (parse (car expr)) (map parse (cdr expr)))]
     [else (raise (exn:fail:syntax:cs450 "Invalid CS450LangExpr"))]))
+;; example
+  (check-equal? (parse '(bind [x 10] (bind [y 20] (+ x y))))
+                (bind 'x (num 10)
+                      (bind 'y (num 20)
+                            (call (vari '+) (list (vari 'x) (vari 'y))))))
+
 
 ;; env-add: Env Var Result -> Env
 ;; Adds a new binding to the environment.
 (define (env-add env var result)
-  (if (list? env)
-      (cons (list var result) env)
-      (raise (error "env-add: Invalid environment (not a list)"))))
+  (unless (list? env)
+    (raise (error (format "env-add: Invalid environment ~a (not a list)" env))))
+  (cons (list var result) env))
+;; example
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
 ;; init-env: -> Environment
@@ -162,6 +176,7 @@
   (list
    (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
    (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN)))))
+;; example
 (check-equal? (map first (init-env)) '(+ -))
 
 ;; 450apply: Result (Listof Result) -> Result
@@ -171,27 +186,37 @@
   (match fn
     [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
     [(fn-result params body env)
+     (unless (list? env)
+       (raise (error (format "450apply: Invalid environment ~a (not a list)" env))))
      (if (= (length params) (length args))
-         (run/env body (foldl env-add env params args))
+         (let ([new-env (foldl env-add env params args)])
+           (run/env body new-env))
          'ARITY-ERROR)]
     [_ 'NOT-FN-ERROR]))
+;; example
 (check-equal? (450apply (lambda args (apply + args)) (list 1 2 3)) 6)
 
 ;; run/env: AST Environment -> Result
 ;; Evaluates a `450LangAST` tree within a given environment `env`.
 ;; Produces the result of evaluation or an error result for invalid operations.
 (define (run/env ast env)
+  (unless (list? env)
+    (raise (error (format "run/env: Invalid environment ~a (not a list)" env))))
   (match ast
     [(num n) n]
-    [(vari v) (let ([binding (assoc v env)])
-                (if binding (second binding) 'UNDEFINED-ERROR))]
+    [(vari v)
+     (let ([binding (assoc v env)])
+       (if binding (second binding) 'UNDEFINED-ERROR))]
     [(fn-ast params body) (fn-result params body env)]
-    [(call fn args) (450apply (run/env fn env) (map (curryr run/env env) args))]
-    [(bind var expr body) (let ([val (run/env expr env)])
-                            (if (result? val)
-                                (run/env body (env-add env var val))
-                                'UNDEFINED-ERROR))]
+    [(call fn args)
+     (450apply (run/env fn env) (map (curryr run/env env) args))]
+    [(bind var expr body)
+     (let ([val (run/env expr env)])
+       (if (result? val)
+           (run/env body (env-add env var val))
+           'UNDEFINED-ERROR))]
     [_ 'UNDEFINED-ERROR]))
+;; example
 (check-equal? (run/env (num 42) '()) 42)
 
 ;; run: AST -> Result
@@ -199,4 +224,5 @@
 ;; Produces the result of evaluation or an error result for invalid operations.
 (define (run ast)
   (run/env ast (init-env)))
+;; example
 (check-equal? (run (num 42)) 42)
