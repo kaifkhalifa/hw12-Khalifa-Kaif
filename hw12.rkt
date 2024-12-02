@@ -177,48 +177,43 @@
 ;; example
 (check-equal? (map first (init-env)) '(+ -))
 
-;; 450apply: Result (Listof Result) -> Result
-;; Applies a function `fn` to the arguments `args` in the given environment.
-;; Produces the result of the function application or an error result if the application is invalid.
-(define (450apply fn args)
-  (match fn
-    [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
-    [(fn-result params body env)
-     (unless (list? env)
-       (raise (error (format "450apply: Invalid environment ~a (not a list)" env))))
-     (if (= (length params) (length args))
-         (let ([new-env (foldl env-add env params args)])
-           (run/env body new-env))
-         'ARITY-ERROR)]
-    [_ 'NOT-FN-ERROR]))
-;; example
-(check-equal? (450apply (lambda args (apply + args)) (list 1 2 3)) 6)
-
-;; run/env: AST Environment -> Result
-;; Evaluates a `450LangAST` tree within a given environment `env`.
-;; Produces the result of evaluation or an error result for invalid operations.
-(define (run/env ast env)
-  (match ast
-    [(num n) n]
-    [(vari v)
-     (let ([binding (assoc v env)])
-       (if binding (second binding) 'UNDEFINED-ERROR))]
-    [(fn-ast params body) (fn-result params body env)]
-    [(call fn args)
-     (450apply (run/env fn env) (map (curryr run/env env) args))]
-    [(bind var expr body)
-     (let ([val (run/env expr env)])
-       (if (result? val)
-           (run/env body (env-add env var val))
-           'UNDEFINED-ERROR))]
-    [_ 'UNDEFINED-ERROR]))
-;; example
-(check-equal? (run/env (num 42) '()) 42)
-
 ;; run: AST -> Result
 ;; Evaluates a `450LangAST` tree in the initial environment.
 ;; Produces the result of evaluation or an error result for invalid operations.
 (define (run ast)
+  ;; Helper function: Applies a function to arguments in the given environment
+  (define (450apply fn args env)
+    (match fn
+      [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
+      [(fn-result params body fn-env)
+       (if (= (length params) (length args))
+           (let ([new-env (foldl env-add fn-env params args)])
+             (run/env body new-env))
+           'ARITY-ERROR)]
+      [_ 'NOT-FN-ERROR]))
+
+  ;; Helper function: Evaluates an AST in the given environment
+  (define (run/env ast env)
+    (match ast
+      [(num n) n]
+      [(vari v)
+       (let ([binding (assoc v env)])
+         (if binding (second binding) 'UNDEFINED-ERROR))]
+      [(fn-ast params body) (fn-result params body env)]
+      [(call fn args)
+       (450apply (run/env fn env) (map (curryr run/env env) args) env)]
+      [(bind var expr body)
+       (let ([val (run/env expr env)])
+         (if (result? val)
+             (run/env body (env-add env var val))
+             'UNDEFINED-ERROR))]
+      [_ 'UNDEFINED-ERROR]))
+
+  ;; Start evaluation with the initial environment
   (run/env ast (init-env)))
-;; example
-(check-equal? (run (num 42)) 42)
+
+;; Example tests for run
+(check-equal? (run (num 42)) 42) 
+(check-equal?
+ (run (bind 'x (num 10) (call (vari '+) (list (vari 'x) (num 5)))))
+ 15)  
