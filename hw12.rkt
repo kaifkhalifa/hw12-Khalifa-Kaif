@@ -163,8 +163,6 @@
 ;; env-add: Env Var Result -> Env
 ;; Adds a new binding to the environment.
 (define (env-add env var result)
-  (unless (list? env)
-    (raise (error (format "env-add: Invalid environment ~a (not a list)" env))))
   (cons (list var result) env))
 ;; example
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))

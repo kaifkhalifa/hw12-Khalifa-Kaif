@@ -14,7 +14,6 @@
      (check-equal? (expr? '(bind [x 10] (+ x 2))) #t))
    (test-case "Valid expression: function call with multiple arguments"
   (check-equal? (expr? '(+ 1 2 3)) #t))
-   
 
    ;; Tests for ast?
    (test-case "Valid AST: number"
