@@ -86,6 +86,13 @@
 ;; example
 (check-equal? (ast? (num 42)) #t)
 
+;; init-env: -> Environment
+;; Initializes the environment with predefined bindings for `+` and `-`.
+(define init-env
+  (list
+   (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
+   (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN)))))
+
 
 ;; exn:fail:syntax:cs450 is a subtype of exn:fail:syntax for CS450 syntax errors.
 (struct exn:fail:syntax:cs450 exn:fail:syntax (message))
@@ -164,18 +171,40 @@
 ;; Adds a new binding to the environment.
 (define (env-add env var result)
   (cons (list var result) env))
+
 ;; example
 (check-equal? (env-add '((y 20)) 'x 10) '((x 10) (y 20)))
 
-;; init-env: -> Environment
-;; Initializes the environment with predefined bindings for `+` and `-`.
-;; Produces a list of initial variable bindings.
-(define (init-env)
-  (list
-   (list '+ (lambda args (if (andmap number? args) (apply + args) 'NaN)))
-   (list '- (lambda args (if (andmap number? args) (apply - args) 'NaN)))))
+;; 450+: Result Result -> Result
+;; “adds” CS450Lang Result values together
+(define/contract (450+ . args)
+  (-> result? ... result?)
+  (cond
+    [(empty? args) 0] 
+    [(andmap number? args) (apply + args)] 
+    [else NaN?]))
 ;; example
-(check-equal? (map first (init-env)) '(+ -))
+(check-equal? (450+ 5 3) 8)
+
+;; 450-: Result Result -> Result
+;; “subtracts” 2nd cs450Lang Result from 1st one
+(define/contract (450- . args)
+  (-> result? ... result?)
+  (cond
+    [(empty? args) 0] 
+    [(andmap number? args) (apply - args)] 
+    [else NaN?]))
+;; examples
+(check-equal? (450- 5 3) 2)
+
+;; lookup: Var Environment -> Result
+;; Retrieves the value bound to `var` in the `env`.
+(define (lookup var env)
+  (cond
+    [(empty? env) 'UNDEFINED-ERROR]
+    [(eq? var (first (first env))) (second (first env))]
+    [else (lookup var (rest env))]))
+
 
 ;; run: AST -> Result
 ;; Evaluates a `450LangAST` tree in the initial environment.
@@ -183,34 +212,34 @@
 (define (run ast)
   ;; Helper function: Applies a function to arguments in the given environment
   (define (450apply fn args env)
-    (match fn
-      [(? procedure?) (if (andmap number? args) (apply fn args) 'NaN)]
-      [(fn-result params body fn-env)
+  (cond
+    [(procedure? fn) (if (andmap number? args) (apply fn args) 'NaN)]
+    [(fn-result? fn)
+     (let ([params (fn-result-params fn)]
+           [body (fn-result-body fn)]
+           [closure-env (fn-result-env fn)])
        (if (= (length params) (length args))
-           (let ([new-env (foldl env-add fn-env params args)])
-             (run/env body new-env))
-           'ARITY-ERROR)]
-      [_ 'NOT-FN-ERROR]))
+           (run/env body (foldl env-add closure-env params args))
+           'ARITY-ERROR))]
+    [else 'NOT-FN-ERROR]))
+
 
   ;; Helper function: Evaluates an AST in the given environment
   (define (run/env ast env)
-    (match ast
-      [(num n) n]
-      [(vari v)
-       (let ([binding (assoc v env)])
-         (if binding (second binding) 'UNDEFINED-ERROR))]
-      [(fn-ast params body) (fn-result params body env)]
-      [(call fn args)
-       (450apply (run/env fn env) (map (curryr run/env env) args) env)]
-      [(bind var expr body)
-       (let ([val (run/env expr env)])
-         (if (result? val)
-             (run/env body (env-add env var val))
-             'UNDEFINED-ERROR))]
-      [_ 'UNDEFINED-ERROR]))
+  (match ast
+    [(num n) n]
+    [(vari v) (lookup v env)]
+    [(fn-ast params body) (fn-result params body env)]
+    [(call fn args)
+     (450apply (run/env fn env) (map (lambda (arg) (run/env arg env)) args) env)]
+    [(bind var expr body)
+     (let ([val (run/env expr env)])
+       (run/env body (env-add env var val)))]
+    [_ 'UNDEFINED-ERROR]))
+
 
   ;; Start evaluation with the initial environment
-  (run/env ast (init-env)))
+  (run/env ast init-env))
 
 ;; Example tests for run
 (check-equal? (run (num 42)) 42) 
