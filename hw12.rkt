@@ -198,8 +198,6 @@
 ;; Evaluates a `450LangAST` tree within a given environment `env`.
 ;; Produces the result of evaluation or an error result for invalid operations.
 (define (run/env ast env)
-  (unless (list? env)
-    (raise (error (format "run/env: Invalid environment ~a (not a list)" env))))
   (match ast
     [(num n) n]
     [(vari v)
