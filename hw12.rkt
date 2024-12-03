@@ -211,31 +211,32 @@
 ;; Produces the result of evaluation or an error result for invalid operations.
 (define (run ast)
   ;; Helper function: Applies a function to arguments in the given environment
-  (define (450apply fn args env)
-  (cond
-    [(procedure? fn) (if (andmap number? args) (apply fn args) 'NaN)]
-    [(fn-result? fn)
-     (let ([params (fn-result-params fn)]
-           [body (fn-result-body fn)]
-           [closure-env (fn-result-env fn)])
+  (define (450apply fn args)
+    (match fn
+      [(? procedure?) (apply fn args)] 
+      [(fn-result params body env)
        (if (= (length params) (length args))
-           (run/env body (foldl env-add closure-env params args))
-           'ARITY-ERROR))]
-    [else 'NOT-FN-ERROR]))
+           (run/env body
+                  (foldl (lambda (pair env-acc)
+                           (env-add env-acc (first pair) (second pair)))
+                         env (map list params args)))
+           ARITY-ERROR?)]))
 
 
   ;; Helper function: Evaluates an AST in the given environment
-  (define (run/env ast env)
-  (match ast
-    [(num n) n]
-    [(vari v) (lookup v env)]
-    [(fn-ast params body) (fn-result params body env)]
-    [(call fn args)
-     (450apply (run/env fn env) (map (lambda (arg) (run/env arg env)) args) env)]
-    [(bind var expr body)
-     (let ([val (run/env expr env)])
-       (run/env body (env-add env var val)))]
-    [_ 'UNDEFINED-ERROR]))
+    (define (run/env ast env)
+    (match ast
+      [(num n) n]
+      [(vari v) (lookup v env)]
+      [(fn-ast params body) (fn-result params body env)]
+      [(call fn args)
+       (let ([evaluated-fn (run/env fn env)]
+             [evaluated-args (map (lambda (arg) (run/env arg env)) args)])
+         (450apply evaluated-fn evaluated-args))]
+      [(bind var expr body)
+       (let ([val (run/env expr env)])
+         (run/env body (env-add env var val)))]
+      [_ 'UNDEFINED-ERROR]))
 
 
   ;; Start evaluation with the initial environment

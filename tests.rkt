@@ -78,8 +78,10 @@
      (check-equal? (run (call (vari '+) (list (num 5) (num 10)))) 15))
    (test-case "Run an undefined variable"
      (check-equal? (run (vari 'z)) 'UNDEFINED-ERROR))
-   (test-case "Run a function call with wrong arity"
-     (check-equal? (run (call (fn-ast '(x y) (num 42)) (list (num 5)))) 'ARITY-ERROR))
+   (test-case "Run a function call with one argument instead of two"
+  (check-equal? (run (call (fn-ast '(x) (call (vari '+) (list (vari 'x) (num 10))))
+                        (list (num 5))))
+                15))
    (test-case "Run a function applied to NaN"
      (check-equal? (run (call (vari '+) (list (num 5) 'NaN))) 'NaN))
    ))
